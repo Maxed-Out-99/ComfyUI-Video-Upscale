@@ -90,7 +90,7 @@ def rename_input(inputs: list, old_name: str, new_name: str):
             break
 
 
-class UltimateSDUpscale:
+class VideoUpscalerMXD:
     @classmethod
     def INPUT_TYPES(s):
         required, optional = USDU_base_inputs()
@@ -119,10 +119,6 @@ class UltimateSDUpscale:
         self.upscale_by = upscale_by
         self.seam_fix_mask_blur = seam_fix_mask_blur
 
-        #
-        # Set up A1111 patches
-        #
-
         # Upscaler
         # An object that the script works with
         shared.sd_upscalers[0] = UpscalerData()
@@ -146,9 +142,7 @@ class UltimateSDUpscale:
         old_level = logger.getEffectiveLevel()
         logger.setLevel(logging.CRITICAL + 1)
         try:
-            #
             # Running the script
-            #
             script = usdu.Script()
             processed = script.run(p=sdprocessing, _=None, tile_width=self.tile_width, tile_height=self.tile_height,
                                mask_blur=self.mask_blur, padding=self.tile_padding, seams_fix_width=self.seam_fix_width,
@@ -166,71 +160,10 @@ class UltimateSDUpscale:
             # Restore the original logging level
             logger.setLevel(old_level)
 
-class UltimateSDUpscaleNoUpscale(UltimateSDUpscale):
-    @classmethod
-    def INPUT_TYPES(s):
-        required, optional = USDU_base_inputs()
-        remove_input(required, "upscale_model")
-        remove_input(required, "upscale_by")
-        rename_input(required, "image", "upscaled_image")
-        return prepare_inputs(required, optional)
-
-    RETURN_TYPES = ("IMAGE",)
-    FUNCTION = "upscale"
-    CATEGORY = "image/upscaling"
-
-    def upscale(self, upscaled_image, model, positive, negative, vae, seed,
-                steps, cfg, sampler_name, scheduler, denoise,
-                mode_type, tile_width, tile_height, mask_blur, tile_padding,
-                seam_fix_mode, seam_fix_denoise, seam_fix_mask_blur,
-                seam_fix_width, seam_fix_padding, force_uniform_tiles, tiled_decode):
-        upscale_by = 1.0
-        return super().upscale(upscaled_image, model, positive, negative, vae, upscale_by, seed,
-                               steps, cfg, sampler_name, scheduler, denoise, None,
-                               mode_type, tile_width, tile_height, mask_blur, tile_padding,
-                               seam_fix_mode, seam_fix_denoise, seam_fix_mask_blur,
-                               seam_fix_width, seam_fix_padding, force_uniform_tiles, tiled_decode)
-    
-class UltimateSDUpscaleCustomSample(UltimateSDUpscale):
-    @classmethod
-    def INPUT_TYPES(s):
-        required, optional = USDU_base_inputs()
-        remove_input(required, "upscale_model")
-        optional.append(("upscale_model", ("UPSCALE_MODEL",)))
-        optional.append(("custom_sampler", ("SAMPLER",)))
-        optional.append(("custom_sigmas", ("SIGMAS",)))
-        return prepare_inputs(required, optional)
-    
-    RETURN_TYPES = ("IMAGE",)
-    FUNCTION = "upscale"
-    CATEGORY = "image/upscaling"
-
-    def upscale(self, image, model, positive, negative, vae, upscale_by, seed,
-                steps, cfg, sampler_name, scheduler, denoise,
-                mode_type, tile_width, tile_height, mask_blur, tile_padding,
-                seam_fix_mode, seam_fix_denoise, seam_fix_mask_blur,
-                seam_fix_width, seam_fix_padding, force_uniform_tiles, tiled_decode,
-                upscale_model=None,
-                custom_sampler=None, custom_sigmas=None):
-        return super().upscale(image, model, positive, negative, vae, upscale_by, seed,
-                steps, cfg, sampler_name, scheduler, denoise, upscale_model,
-                mode_type, tile_width, tile_height, mask_blur, tile_padding,
-                seam_fix_mode, seam_fix_denoise, seam_fix_mask_blur,
-                seam_fix_width, seam_fix_padding, force_uniform_tiles, tiled_decode,
-                custom_sampler, custom_sigmas)
-
-
-# A dictionary that contains all nodes you want to export with their names
-# NOTE: names should be globally unique
 NODE_CLASS_MAPPINGS = {
-    "UltimateSDUpscale": UltimateSDUpscale,
-    "UltimateSDUpscaleNoUpscale": UltimateSDUpscaleNoUpscale,
-    "UltimateSDUpscaleCustomSample": UltimateSDUpscaleCustomSample
+    "VideoUpscalerMXD": VideoUpscalerMXD,
 }
 
-# A dictionary that contains the friendly/humanly readable titles for the nodes
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "UltimateSDUpscale": "Ultimate SD Upscale",
-    "UltimateSDUpscaleNoUpscale": "Ultimate SD Upscale (No Upscale)",
-    "UltimateSDUpscaleCustomSample": "Ultimate SD Upscale (Custom Sample)"
+    "VideoUpscalerMXD": "Video Upscaler MXD",
 }
