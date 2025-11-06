@@ -1,5 +1,6 @@
 # ComfyUI Node for Ultimate SD Upscale by Coyote-A: https://github.com/Coyote-A/ultimate-upscale-for-automatic1111
 
+import contextlib
 import logging
 import torch
 import comfy
@@ -23,6 +24,15 @@ SEAM_FIX_MODES = {
     "Half Tile": usdu.USDUSFMode.HALF_TILE,
     "Half Tile + Intersections": usdu.USDUSFMode.HALF_TILE_PLUS_INTERSECTIONS,
 }
+@contextlib.contextmanager
+def suppress_logging(level=logging.CRITICAL + 1):
+    logger = logging.getLogger()
+    old_level = logger.getEffectiveLevel()
+    try:
+        logger.setLevel(level)
+        yield
+    finally:
+        logger.setLevel(old_level)
 
 INPUT_TYPES = {
     "required": {
@@ -106,10 +116,7 @@ class VideoUpscalerMXD:
         )
 
         # Disable logging
-        logger = logging.getLogger()
-        old_level = logger.getEffectiveLevel()
-        logger.setLevel(logging.CRITICAL + 1)
-        try:
+        with suppress_logging():
             # Running the script
             script = usdu.Script()
             processed = script.run(p=sdprocessing, _=None, tile_width=self.tile_width, tile_height=self.tile_height,
@@ -124,9 +131,6 @@ class VideoUpscalerMXD:
             images = [pil_to_tensor(img) for img in shared.batch]
             tensor = torch.cat(images, dim=0)
             return (tensor,)
-        finally:
-            # Restore the original logging level
-            logger.setLevel(old_level)
 
 NODE_CLASS_MAPPINGS = {
     "VideoUpscalerMXD": VideoUpscalerMXD,
