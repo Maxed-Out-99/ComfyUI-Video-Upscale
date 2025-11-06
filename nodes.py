@@ -2,13 +2,40 @@
 
 import contextlib
 import logging
+from types import SimpleNamespace
+
 import torch
 import comfy
 from usdu_patch import usdu
 from utils import tensor_to_pil, pil_to_tensor
 from modules.processing import StableDiffusionProcessing
-import modules.shared as shared
 from modules.upscaler import UpscalerData
+
+
+class Options:
+    img2img_background_color = "#ffffff"  # Set to white for now
+
+
+class State:
+    interrupted = False
+
+    def begin(self):
+        pass
+
+    def end(self):
+        pass
+
+
+shared = SimpleNamespace(
+    Options=Options,
+    State=State,
+    opts=Options(),
+    state=State(),
+    sd_upscalers=[None],
+    actual_upscaler=None,
+    batch=None,
+    batch_as_tensor=None,
+)
 
 MAX_RESOLUTION = 8192
 # The modes available for Ultimate SD Upscale
