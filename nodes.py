@@ -106,19 +106,6 @@ class VideoUpscalerMXD:
                 seam_fix_mode, seam_fix_denoise, seam_fix_mask_blur,
                 seam_fix_width, seam_fix_padding, force_uniform_tiles, tiled_decode, 
                 custom_sampler=None, custom_sigmas=None):
-        # Store params
-        self.tile_width = tile_width
-        self.tile_height = tile_height
-        self.mask_blur = mask_blur
-        self.tile_padding = tile_padding
-        self.seam_fix_width = seam_fix_width
-        self.seam_fix_denoise = seam_fix_denoise
-        self.seam_fix_padding = seam_fix_padding
-        self.seam_fix_mode = seam_fix_mode
-        self.mode_type = mode_type
-        self.upscale_by = upscale_by
-        self.seam_fix_mask_blur = seam_fix_mask_blur
-
         # Upscaler
         # An object that the script works with
         shared.sd_upscalers[0] = UpscalerData()
@@ -144,13 +131,27 @@ class VideoUpscalerMXD:
         try:
             # Running the script
             script = usdu.Script()
-            processed = script.run(p=sdprocessing, _=None, tile_width=self.tile_width, tile_height=self.tile_height,
-                               mask_blur=self.mask_blur, padding=self.tile_padding, seams_fix_width=self.seam_fix_width,
-                               seams_fix_denoise=self.seam_fix_denoise, seams_fix_padding=self.seam_fix_padding,
-                               upscaler_index=0, save_upscaled_image=False, redraw_mode=MODES[self.mode_type],
-                               save_seams_fix_image=False, seams_fix_mask_blur=self.seam_fix_mask_blur,
-                               seams_fix_type=SEAM_FIX_MODES[self.seam_fix_mode], target_size_type=2,
-                               custom_width=None, custom_height=None, custom_scale=self.upscale_by)
+            script.run(
+                p=sdprocessing,
+                _=None,
+                tile_width=tile_width,
+                tile_height=tile_height,
+                mask_blur=mask_blur,
+                padding=tile_padding,
+                seams_fix_width=seam_fix_width,
+                seams_fix_denoise=seam_fix_denoise,
+                seams_fix_padding=seam_fix_padding,
+                upscaler_index=0,
+                save_upscaled_image=False,
+                redraw_mode=MODES[mode_type],
+                save_seams_fix_image=False,
+                seams_fix_mask_blur=seam_fix_mask_blur,
+                seams_fix_type=SEAM_FIX_MODES[seam_fix_mode],
+                target_size_type=2,
+                custom_width=None,
+                custom_height=None,
+                custom_scale=upscale_by,
+            )
 
             # Return the resulting images
             images = [pil_to_tensor(img) for img in shared.batch]
