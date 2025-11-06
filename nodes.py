@@ -1,14 +1,21 @@
 import contextlib
+import json
 import logging
 import math
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 from types import SimpleNamespace
+from enum import Enum
+from importlib import import_module
+from pathlib import Path
 import torch
 import torch.nn.functional as F
 import comfy
+from comfy_extras.nodes_custom_sampler import SamplerCustom
 from comfy_extras.nodes_upscale_model import ImageUpscaleWithModel
+from tqdm import tqdm
 from usdu_patch import usdu
+from utils import tensor_to_pil, pil_to_tensor, get_crop_region, expand_crop, crop_cond
 from modules.processing import StableDiffusionProcessing
 from modules.upscaler import UpscalerData
 import modules.shared as shared
@@ -48,6 +55,15 @@ shared = SimpleNamespace(
     batch=None,
     batch_as_tensor=None,
 )
+
+comfy_nodes = import_module("nodes")
+common_ksampler = comfy_nodes.common_ksampler
+VAEEncode = comfy_nodes.VAEEncode
+VAEDecode = comfy_nodes.VAEDecode
+VAEDecodeTiled = comfy_nodes.VAEDecodeTiled
+
+if not hasattr(Image, "Resampling"):  # For older versions of Pillow
+    Image.Resampling = Image
 
 MAX_RESOLUTION = 8192
 
@@ -464,15 +480,162 @@ SEAM_FIX_MODES = {
 }
 
 
-class Upscaler:
+class USDUMode(Enum):
+    LINEAR = 0
+    CHESS = 1
+    NONE = 2
 
+
+class USDUSFMode(Enum):
+    NONE = 0
+    BAND_PASS = 1
+    HALF_TILE = 2
+    HALF_TILE_PLUS_INTERSECTIONS = 3
+
+
+class StableDiffusionProcessing:
+
+    def __init__(
+        self,
+        init_img,
+        model,
+        positive,
+        negative,
+        vae,
+        seed,
+        steps,
+        cfg,
+        sampler_name,
+        scheduler,
+        denoise,
+        upscale_by,
+        uniform_tile_mode,
+        tiled_decode,
+        tile_width,
+        tile_height,
+        redraw_mode,
+        seam_fix_mode,
+        custom_sampler=None,
+        custom_sigmas=None,
+    ):
+        # Variables used by the USDU script
+        self.init_images = [init_img]
+# --- ENUMS & CONSTANTS ------------------------------------------------------
+
+class USDUMode(Enum):
+    LINEAR = 0
+    CHESS = 1
+    NONE = 2
+
+
+class USDUSFMode(Enum):
+    NONE = 0
+    BAND_PASS = 1
+    HALF_TILE = 2
+    HALF_TILE_PLUS_INTERSECTIONS = 3
+
+
+# --- A1111 COMPATIBILITY WRAPPERS ------------------------------------------
+
+class StableDiffusionProcessing:
+    def __init__(
+        self,
+        init_img,
+        model,
+        positive,
+        negative,
+        vae,
+        seed,
+        steps,
+        cfg,
+        sampler_name,
+        scheduler,
+        denoise,
+        upscale_by,
+        uniform_tile_mode,
+        tiled_decode,
+        tile_width,
+        tile_height,
+        redraw_mode,
+        seam_fix_mode,
+        custom_sampler=None,
+        custom_sigmas=None,
+    ):
+        # Variables used by the USDU script
+        self.init_images = [init_img]
+        self.image_mask = None
+        self.mask_blur = 0
+        self.inpaint_full_res_padding = 0
+        self.width = init_img.width * upscale_by
+        self.height = init_img.height * upscale_by
+        self.rows = round(self.height / tile_height)
+        self.cols = round(self.width / tile_width)
+
+        # ComfyUI Sampler inputs
+        self.model = model
+        self.positive = positive
+        self.negative = negative
+        self.vae = vae
+        self.seed = seed
+        self.steps = steps
+        self.cfg = cfg
+        self.sampler_name = sampler_name
+        self.scheduler = scheduler
+        self.denoise = denoise
+
+        # Optional custom sampler and sigmas
+        self.custom_sampler = custom_sampler
+        self.custom_sigmas = custom_sigmas
+        if (custom_sampler is not None) ^ (custom_sigmas is not None):
+            print("[USDU] Both custom sampler and custom sigmas must be provided, defaulting to widget sampler and sigmas")
+
+        # Internal helpers
+        self.init_size = (init_img.width, init_img.height)
+        self.upscale_by = upscale_by
+        self.uniform_tile_mode = uniform_tile_mode
+        self.tiled_decode = tiled_decode
+        self.vae_decoder = VAEDecode()
+        self.vae_encoder = VAEEncode()
+        self.vae_decoder_tiled = VAEDecodeTiled()
+        self.extra_generation_params = {}
+
+        if self.tiled_decode:
+            print("[USDU] Using tiled decode")
+
+        # Load optional config
+        config_path = Path(__file__).with_name("config.json")
+        self.progress_bar_enabled = False
+        if config_path.exists():
+            with config_path.open("r") as f:
+                cfg_json = json.load(f)
+            if comfy.utils.PROGRESS_BAR_ENABLED:
+                self.progress_bar_enabled = True
+                comfy.utils.PROGRESS_BAR_ENABLED = cfg_json.get("per_tile_progress", True)
+
+    def __del__(self):
+        if self.progress_bar_enabled:
+            comfy.utils.PROGRESS_BAR_ENABLED = True
+
+
+class Processed:
+    def __init__(self, p: StableDiffusionProcessing, images: list, seed: int, info: str):
+        self.images = images
+        self.seed = seed
+        self.info = info
+
+    def infotext(self, p: StableDiffusionProcessing, index):
+        return None
+
+
+# --- UPSCALER WRAPPERS ------------------------------------------------------
+
+class Upscaler:
     def upscale(self, img, scale, selected_model: str = None):
         if scale == 1.0:
             return img
         if shared.actual_upscaler is None:
             return img.resize((img.width * scale, img.height * scale), Image.Resampling.LANCZOS)
-        if "execute" in dir(ImageUpscaleWithModel):
-            # V3 schema: https://github.com/comfyanonymous/ComfyUI/pull/10149
+        if hasattr(ImageUpscaleWithModel, "execute"):
             (upscaled,) = ImageUpscaleWithModel.execute(shared.actual_upscaler, shared.batch_as_tensor)
         else:
             (upscaled,) = ImageUpscaleWithModel().upscale(shared.actual_upscaler, shared.batch_as_tensor)
@@ -486,7 +649,6 @@ class UpscalerData:
 
     def __init__(self):
         self.scaler = Upscaler()
-
 
 @contextlib.contextmanager
 def suppress_logging(level=logging.CRITICAL + 1):
