@@ -1,22 +1,50 @@
-# ComfyUI Node for Ultimate SD Upscale by Coyote-A: https://github.com/Coyote-A/ultimate-upscale-for-automatic1111
-
 import contextlib
 import logging
 import math
 import numpy as np
 from PIL import Image
+from types import SimpleNamespace
 import torch
 import torch.nn.functional as F
 import comfy
 from usdu_patch import usdu
 from modules.processing import StableDiffusionProcessing
-import modules.shared as shared
 from modules.upscaler import UpscalerData
 
-if not hasattr(Image, "Resampling"):  # For older versions of Pillow
+
+# Compatibility fix for older Pillow versions
+if not hasattr(Image, "Resampling"):
     Image.Resampling = Image
 
+
+# Mimic A1111 shared objects (needed by some Ultimate SD Upscale functions)
+class Options:
+    img2img_background_color = "#ffffff"  # Set to white for now
+
+
+class State:
+    interrupted = False
+
+    def begin(self):
+        pass
+
+    def end(self):
+        pass
+
+
+shared = SimpleNamespace(
+    Options=Options,
+    State=State,
+    opts=Options(),
+    state=State(),
+    sd_upscalers=[None],
+    actual_upscaler=None,
+    batch=None,
+    batch_as_tensor=None,
+)
+
 MAX_RESOLUTION = 8192
+
 
 
 def tensor_to_pil(img_tensor, batch_index=0):
