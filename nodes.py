@@ -7,9 +7,15 @@ from types import SimpleNamespace
 import torch
 import torch.nn.functional as F
 import comfy
+from comfy_extras.nodes_upscale_model import ImageUpscaleWithModel
 from usdu_patch import usdu
 from modules.processing import StableDiffusionProcessing
 from modules.upscaler import UpscalerData
+import modules.shared as shared
+
+# Compatibility fix for older Pillow versions
+if not hasattr(Image, "Resampling"):
+    Image.Resampling = Image
 
 
 # Compatibility fix for older Pillow versions
@@ -456,6 +462,32 @@ SEAM_FIX_MODES = {
     "Half Tile": usdu.USDUSFMode.HALF_TILE,
     "Half Tile + Intersections": usdu.USDUSFMode.HALF_TILE_PLUS_INTERSECTIONS,
 }
+
+
+class Upscaler:
+
+    def upscale(self, img, scale, selected_model: str = None):
+        if scale == 1.0:
+            return img
+        if shared.actual_upscaler is None:
+            return img.resize((img.width * scale, img.height * scale), Image.Resampling.LANCZOS)
+        if "execute" in dir(ImageUpscaleWithModel):
+            # V3 schema: https://github.com/comfyanonymous/ComfyUI/pull/10149
+            (upscaled,) = ImageUpscaleWithModel.execute(shared.actual_upscaler, shared.batch_as_tensor)
+        else:
+            (upscaled,) = ImageUpscaleWithModel().upscale(shared.actual_upscaler, shared.batch_as_tensor)
+        shared.batch = [tensor_to_pil(upscaled, i) for i in range(len(upscaled))]
+        return shared.batch[0]
+
+
+class UpscalerData:
+    name = ""
+    data_path = ""
+
+    def __init__(self):
+        self.scaler = Upscaler()
+
+
 @contextlib.contextmanager
 def suppress_logging(level=logging.CRITICAL + 1):
     logger = logging.getLogger()
