@@ -88,19 +88,6 @@ def round_length(length, multiple=8):
     return round(length / multiple) * multiple
 
 
-class USDUMode(Enum):
-    LINEAR = 0
-    CHESS = 1
-    NONE = 2
-
-
-class USDUSFMode(Enum):
-    NONE = 0
-    BAND_PASS = 1
-    HALF_TILE = 2
-    HALF_TILE_PLUS_INTERSECTIONS = 3
-
-
 class USDURedraw:
     def __init__(self):
         self.initial_info = None
@@ -994,61 +981,6 @@ def crop_cond(cond, region, init_size, canvas_size, tile_size, w_pad=0, h_pad=0)
         crop_reference_latents(cond_dict, region, init_size, canvas_size, tile_size, w_pad, h_pad)
         cropped.append(n)
     return cropped
-# The modes available for Ultimate SD Upscale
-MODES = {
-    "Linear": USDUMode.LINEAR,
-    "Chess": USDUMode.CHESS,
-    "None": USDUMode.NONE,
-}
-# The seam fix modes
-SEAM_FIX_MODES = {
-    "None": USDUSFMode.NONE,
-    "Band Pass": USDUSFMode.BAND_PASS,
-    "Half Tile": USDUSFMode.HALF_TILE,
-    "Half Tile + Intersections": USDUSFMode.HALF_TILE_PLUS_INTERSECTIONS,
-}
-
-
-class USDUMode(Enum):
-    LINEAR = 0
-    CHESS = 1
-    NONE = 2
-
-
-class USDUSFMode(Enum):
-    NONE = 0
-    BAND_PASS = 1
-    HALF_TILE = 2
-    HALF_TILE_PLUS_INTERSECTIONS = 3
-
-
-class StableDiffusionProcessing:
-
-    def __init__(
-        self,
-        init_img,
-        model,
-        positive,
-        negative,
-        vae,
-        seed,
-        steps,
-        cfg,
-        sampler_name,
-        scheduler,
-        denoise,
-        upscale_by,
-        uniform_tile_mode,
-        tiled_decode,
-        tile_width,
-        tile_height,
-        redraw_mode,
-        seam_fix_mode,
-        custom_sampler=None,
-        custom_sigmas=None,
-    ):
-        # Variables used by the USDU script
-        self.init_images = [init_img]
 # --- ENUMS & CONSTANTS ------------------------------------------------------
 
 class USDUMode(Enum):
@@ -1062,6 +994,21 @@ class USDUSFMode(Enum):
     BAND_PASS = 1
     HALF_TILE = 2
     HALF_TILE_PLUS_INTERSECTIONS = 3
+
+
+# The modes available for Ultimate SD Upscale
+MODES = {
+    "Linear": USDUMode.LINEAR,
+    "Chess": USDUMode.CHESS,
+    "None": USDUMode.NONE,
+}
+# The seam fix modes
+SEAM_FIX_MODES = {
+    "None": USDUSFMode.NONE,
+    "Band Pass": USDUSFMode.BAND_PASS,
+    "Half Tile": USDUSFMode.HALF_TILE,
+    "Half Tile + Intersections": USDUSFMode.HALF_TILE_PLUS_INTERSECTIONS,
+}
 
 
 # --- A1111 COMPATIBILITY WRAPPERS ------------------------------------------
