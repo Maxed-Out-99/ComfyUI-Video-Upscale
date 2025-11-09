@@ -16,9 +16,6 @@ from comfy_extras.nodes_upscale_model import ImageUpscaleWithModel
 from tqdm import tqdm
 from usdu_patch import usdu
 from utils import tensor_to_pil, pil_to_tensor, get_crop_region, expand_crop, crop_cond
-from modules.processing import StableDiffusionProcessing, Processed, fix_seed, process_images
-from modules.upscaler import UpscalerData
-import modules.shared as shared
 
 
 # Compatibility fix for older Pillow versions
@@ -994,74 +991,18 @@ def crop_cond(cond, region, init_size, canvas_size, tile_size, w_pad=0, h_pad=0)
         crop_reference_latents(cond_dict, region, init_size, canvas_size, tile_size, w_pad, h_pad)
         cropped.append(n)
     return cropped
-# The modes available for Ultimate SD Upscale
 MODES = {
     "Linear": USDUMode.LINEAR,
     "Chess": USDUMode.CHESS,
     "None": USDUMode.NONE,
 }
-# The seam fix modes
+
 SEAM_FIX_MODES = {
     "None": USDUSFMode.NONE,
     "Band Pass": USDUSFMode.BAND_PASS,
     "Half Tile": USDUSFMode.HALF_TILE,
     "Half Tile + Intersections": USDUSFMode.HALF_TILE_PLUS_INTERSECTIONS,
 }
-
-
-class USDUMode(Enum):
-    LINEAR = 0
-    CHESS = 1
-    NONE = 2
-
-
-class USDUSFMode(Enum):
-    NONE = 0
-    BAND_PASS = 1
-    HALF_TILE = 2
-    HALF_TILE_PLUS_INTERSECTIONS = 3
-
-
-class StableDiffusionProcessing:
-
-    def __init__(
-        self,
-        init_img,
-        model,
-        positive,
-        negative,
-        vae,
-        seed,
-        steps,
-        cfg,
-        sampler_name,
-        scheduler,
-        denoise,
-        upscale_by,
-        uniform_tile_mode,
-        tiled_decode,
-        tile_width,
-        tile_height,
-        redraw_mode,
-        seam_fix_mode,
-        custom_sampler=None,
-        custom_sigmas=None,
-    ):
-        # Variables used by the USDU script
-        self.init_images = [init_img]
-# --- ENUMS & CONSTANTS ------------------------------------------------------
-
-class USDUMode(Enum):
-    LINEAR = 0
-    CHESS = 1
-    NONE = 2
-
-
-class USDUSFMode(Enum):
-    NONE = 0
-    BAND_PASS = 1
-    HALF_TILE = 2
-    HALF_TILE_PLUS_INTERSECTIONS = 3
 
 
 # --- A1111 COMPATIBILITY WRAPPERS ------------------------------------------
@@ -1154,6 +1095,161 @@ class Processed:
 
     def infotext(self, p: StableDiffusionProcessing, index):
         return None
+
+
+def fix_seed(p: StableDiffusionProcessing):
+    pass
+
+
+def sample(model, seed, steps, cfg, sampler_name, scheduler, positive, negative,
+           latent, denoise, custom_sampler, custom_sigmas):
+    if custom_sampler is not None and custom_sigmas is not None:
+        custom_sample = SamplerCustom()
+        (samples, _) = getattr(custom_sample, custom_sample.FUNCTION)(
+            model=model,
+            add_noise=True,
+            noise_seed=seed,
+            cfg=cfg,
+            positive=positive,
+            negative=negative,
+            sampler=custom_sampler,
+            sigmas=custom_sigmas,
+            latent_image=latent,
+        )
+        return samples
+
+    (samples,) = common_ksampler(
+        model,
+        seed,
+        steps,
+        cfg,
+        sampler_name,
+        scheduler,
+        positive,
+        negative,
+        latent,
+        denoise=denoise,
+    )
+    return samples
+
+
+def process_images(p: StableDiffusionProcessing) -> Processed:
+    if p.progress_bar_enabled and getattr(p, "pbar", None) is None:
+        p.pbar = tqdm(total=p.tiles, desc="USDU", unit="tile")
+
+    image_mask = p.image_mask.convert("L")
+    init_image = p.init_images[0]
+
+    crop_region = get_crop_region(image_mask, p.inpaint_full_res_padding)
+
+    if p.uniform_tile_mode:
+        x1, y1, x2, y2 = crop_region
+        crop_width = x2 - x1
+        crop_height = y2 - y1
+        crop_ratio = crop_width / crop_height
+        p_ratio = p.width / p.height
+        if crop_ratio > p_ratio:
+            target_width = crop_width
+            target_height = round(crop_width / p_ratio)
+        else:
+            target_width = round(crop_height * p_ratio)
+            target_height = crop_height
+        crop_region, tile_size = expand_crop(
+            crop_region,
+            image_mask.width,
+            image_mask.height,
+            target_width,
+            target_height,
+        )
+    else:
+        x1, y1, x2, y2 = crop_region
+        crop_width = x2 - x1
+        crop_height = y2 - y1
+        target_width = math.ceil(crop_width / 8) * 8
+        target_height = math.ceil(crop_height / 8) * 8
+        crop_region, tile_size = expand_crop(
+            crop_region,
+            image_mask.width,
+            image_mask.height,
+            target_width,
+            target_height,
+        )
+
+    if p.mask_blur > 0:
+        image_mask = image_mask.filter(ImageFilter.GaussianBlur(p.mask_blur))
+
+    tiles = [img.crop(crop_region) for img in shared.batch]
+    initial_tile_size = tiles[0].size
+
+    for i, tile in enumerate(tiles):
+        if tile.size != tile_size:
+            tiles[i] = tile.resize(tile_size, Image.Resampling.LANCZOS)
+
+    positive_cropped = crop_cond(
+        p.positive,
+        crop_region,
+        p.init_size,
+        init_image.size,
+        tile_size,
+    )
+    negative_cropped = crop_cond(
+        p.negative,
+        crop_region,
+        p.init_size,
+        init_image.size,
+        tile_size,
+    )
+
+    batched_tiles = torch.cat([pil_to_tensor(tile) for tile in tiles], dim=0)
+    (latent,) = p.vae_encoder.encode(p.vae, batched_tiles)
+
+    samples = sample(
+        p.model,
+        p.seed,
+        p.steps,
+        p.cfg,
+        p.sampler_name,
+        p.scheduler,
+        positive_cropped,
+        negative_cropped,
+        latent,
+        p.denoise,
+        p.custom_sampler,
+        p.custom_sigmas,
+    )
+
+    if p.progress_bar_enabled:
+        p.pbar.update(1)
+
+    if not p.tiled_decode:
+        (decoded,) = p.vae_decoder.decode(p.vae, samples)
+    else:
+        (decoded,) = p.vae_decoder_tiled.decode(p.vae, samples, 512)
+
+    tiles_sampled = [tensor_to_pil(decoded, i) for i in range(len(decoded))]
+
+    for i, tile_sampled in enumerate(tiles_sampled):
+        init_image = shared.batch[i]
+
+        if tile_sampled.size != initial_tile_size:
+            tile_sampled = tile_sampled.resize(initial_tile_size, Image.Resampling.LANCZOS)
+
+        image_tile_only = Image.new("RGBA", init_image.size)
+        image_tile_only.paste(tile_sampled, crop_region[:2])
+
+        temp = image_tile_only.copy()
+        temp.putalpha(image_mask)
+        image_tile_only.paste(temp, image_tile_only)
+
+        result = init_image.convert("RGBA")
+        result.alpha_composite(image_tile_only)
+
+        result = result.convert("RGB")
+
+        shared.batch[i] = result
+
+    processed = Processed(p, [shared.batch[0]], p.seed, None)
+    return processed
 
 
 # --- UPSCALER WRAPPERS ------------------------------------------------------
