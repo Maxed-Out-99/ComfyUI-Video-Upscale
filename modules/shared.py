@@ -1,25 +1,42 @@
-class Options:
-    img2img_background_color = "#ffffff"  # Set to white for now
+"""Compatibility proxy for the shared namespace used by USDU helpers."""
+
+from __future__ import annotations
+
+import sys
+from types import ModuleType
+
+from nodes import Options, State, shared as _shared
 
 
-class State:
-    interrupted = False
+class _SharedModule(ModuleType):
+    """Module proxy that forwards attribute access to :mod:`nodes`."""
 
-    def begin(self):
-        pass
+    Options = Options
+    State = State
 
-    def end(self):
-        pass
+    def __getattr__(self, name):  # pragma: no cover - thin forwarding layer
+        if hasattr(_shared, name):
+            return getattr(_shared, name)
+        raise AttributeError(name) from None
+
+    def __setattr__(self, name, value):  # pragma: no cover - thin forwarding layer
+        if hasattr(_shared, name):
+            setattr(_shared, name, value)
+        else:
+            super().__setattr__(name, value)
 
 
-opts = Options()
-state = State()
+_module = _SharedModule(__name__)
+_module.__dict__["__file__"] = __file__
+_module.__dict__["__package__"] = __package__
+_module.__dict__["__spec__"] = None
 
-# Will only ever hold 1 upscaler
-sd_upscalers = [None]
-# The upscaler usable by ComfyUI nodes
-actual_upscaler = None
+# Seed default attributes so direct reads behave as expected.
+_module.opts = _shared.opts
+_module.state = _shared.state
+_module.sd_upscalers = _shared.sd_upscalers
+_module.actual_upscaler = _shared.actual_upscaler
+_module.batch = _shared.batch
+_module.batch_as_tensor = _shared.batch_as_tensor
 
-# Batch of images to upscale
-batch = None
-batch_as_tensor = None
+sys.modules[__name__] = _module
