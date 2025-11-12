@@ -39,6 +39,11 @@ repo_dir = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, repo_dir)
 original_modules = sys.modules.copy()
 
+# Apply USDU monkey patches and keep a handle to the patched module.
+from . import usdu_patch as _usdu_patch
+
+usdu = _usdu_patch.usdu
+
 # Place aside potentially conflicting modules
 modules_used = [
     "modules",
@@ -57,7 +62,7 @@ for module in modules_used:
 
 # Proceed with node setup
 from .nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
-__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
+__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "usdu"]
 
 # Clean up imports
 # Remove any new modules
