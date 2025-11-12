@@ -1057,6 +1057,7 @@ class StableDiffusionProcessing:
         self.height = init_img.height * upscale_by
         self.rows = round(self.height / tile_height)
         self.cols = round(self.width / tile_width)
+        self.tiles = max(1, self.rows * self.cols)
 
         # ComfyUI Sampler inputs
         self.model = model
