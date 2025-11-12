@@ -1008,20 +1008,6 @@ SEAM_FIX_MODES = {
 }
 
 
-MODES = {
-    "Linear": USDUMode.LINEAR,
-    "Chess": USDUMode.CHESS,
-    "None": USDUMode.NONE,
-}
-
-SEAM_FIX_MODES = {
-    "None": USDUSFMode.NONE,
-    "Band Pass": USDUSFMode.BAND_PASS,
-    "Half Tile": USDUSFMode.HALF_TILE,
-    "Half Tile + Intersections": USDUSFMode.HALF_TILE_PLUS_INTERSECTIONS,
-}
-
-
 # --- A1111 COMPATIBILITY WRAPPERS ------------------------------------------
 
 class StableDiffusionProcessing:
