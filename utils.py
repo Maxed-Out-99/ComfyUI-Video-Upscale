@@ -2,7 +2,6 @@ import numpy as np
 from PIL import Image, ImageFilter
 import torch
 import torch.nn.functional as F
-from torchvision.transforms import GaussianBlur
 import math
 
 if (not hasattr(Image, 'Resampling')):  # For older versions of Pillow

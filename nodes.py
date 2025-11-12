@@ -14,7 +14,6 @@ import comfy
 from comfy_extras.nodes_custom_sampler import SamplerCustom
 from comfy_extras.nodes_upscale_model import ImageUpscaleWithModel
 from tqdm import tqdm
-from usdu_patch import usdu
 from utils import tensor_to_pil, pil_to_tensor, get_crop_region, expand_crop, crop_cond
 
 
