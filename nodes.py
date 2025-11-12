@@ -23,11 +23,6 @@ if not hasattr(Image, "Resampling"):
     Image.Resampling = Image
 
 
-# Compatibility fix for older Pillow versions
-if not hasattr(Image, "Resampling"):
-    Image.Resampling = Image
-
-
 # Mimic A1111 shared objects (needed by some Ultimate SD Upscale functions)
 class Options:
     img2img_background_color = "#ffffff"  # Set to white for now
@@ -60,11 +55,7 @@ VAEEncode = comfy_nodes.VAEEncode
 VAEDecode = comfy_nodes.VAEDecode
 VAEDecodeTiled = comfy_nodes.VAEDecodeTiled
 
-if not hasattr(Image, "Resampling"):  # For older versions of Pillow
-    Image.Resampling = Image
 
-if not hasattr(Image, "Resampling"):
-    Image.Resampling = Image
 
 
 def flatten(img, bgcolor):
